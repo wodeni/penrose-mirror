@@ -1,18 +1,26 @@
 language: nix
 sudo: false
 deploy:
-  matrix:
-  - provider: s3
-  - provider: codedeploy
-    access_key_id: AKIAJ2EXBYL3OEJQM6NA
-    secret_access_key:
-      secure: Xrs3ObXazm5VhoiM5/Y0RLeXE7aAhdr7wsdPWb5UqH5YsngaMrXcwOF2ibYLyrKxV/vmfH8wrG1grQpL5yng2WioqMq522fxr2HYz7ESydTMxY6ZPWMze+uffdJEP3eb1NySpIImyW8ZtBwkruanXtemrbzRSnz4salcbXJ+uKJEs3ynIBqWk+pd6BB2YTjdDOUI7+Ek7HRPe0gy0H/1gXWI0jfVjJYZ3KZZ/3ifonGzcKdN6ScOGw3GJ8+kKNidln0neOmGCc74mkCoabXP9cXhlKOyR1PZaWcuPxKm7MTI2RQKCN9wH8MORMc3rmpRVNlBXVHr9WZJXb3QKNlSBeguTP5CgTjzFZPqILXK3/i4h7nCs6cwKdqxNdiRdfQBPwVHL5EC8grGuHAOgQKeKDDS7k8FYabBPrF80Lo+0L2QQGEyuKAE8pETAqpYjPcBRFwiLkCoUv4xTvbBJbGEWVgXbxpAWjjPWbbn6MfWYH7bxKPD0vua1cTYhXDqVwAHiJDUpxEWxYZmCvnUa7//YiTwFKmzH21er7eu0cZDemNyHS8fKBIzGmAaXM93esfXMSinUYQB00AH/2j5F4TSE9YPqwJZM9mAFF9BC9hsAoEpGDrHZqLCzjNytxDbP3a21qYkDJfVh1JLmsV6oXD+ZEAJ5iTJyf1kAcbCoakrnAI=
-    bucket: travis-penrose
-    key: latest/ww.zip
-    application: ww
-    deployment_group: ww
-    on:
-      branch: prod
+- provider: s3
+  access_key_id: AKIAJ2EXBYL3OEJQM6NA
+  secret_access_key: &1
+    secure: a3KP3sMIcljWu4WPw2AeztrbWKM6gWlodEhN+AwAaVO0ZNM8duf79NyEoqoxL6d3HsA2lAtovlggZ3SEueKqrZgUtS4I9/pwwac5MShQrlLULK91iEPZlNdzREOyQb2eRjkiLghXH5Bs9q28TLH0Am3lOrm/hIqQUQn+o4amqf2r/vDEi87DZe69St4Heq3Q82SYtNagFrTgJKWfzoqN7GNmDDKMSiiWyFt6O5r4Xvkq7py/h9tL7H9NO3LDlgnOUN4Hv92xfwMr5hl9nA1qCqNP5ZfB8O3aH5abE2WP+bRXdzHGNOLXRkXQYfxNPV+aP4lRGqxnKmRhpuBBVoQPV1xqhArSe++rNAdZEl/W7Rvc6+/5eCT17PyrbEyXbrY2i88IkfAMsHWJF8lNwvaIkYaOr2rldwfvXr6UdwKjtLnRxY+u0uXSkAKHtGH31ZJdtYRhU/L933+u41tIJyGcypwoT/863f/am5KZUXjzdS0GDB44189uNkeZIbd0R9pwVXLgQmKME/7kdQmo93OPoedAt2RFobimhS0ud1kaDI3GpZfMK4JrxCa2IM+kN8u/Xjk5BI2lrdq8nwn6gjA0rzPlQdcZtzJPn7WpxR+AxQCRbScMqFZVrn2FfbbOXYMph+k7BHKlSf/t05p2mlGL5Z+u4BwuzCjnENQO7wjqx6A=
+  local_dir: dpl_cd_upload
+  skip_cleanup: true
+  on: &2
+    repo: penrose/penrose
+    branch: prod
+  bucket: travis-penrose
+  upload_dir: latest
+- provider: codedeploy
+  access_key_id: AKIAJ2EXBYL3OEJQM6NA
+  secret_access_key: *1
+  bucket: travis-penrose
+  key: latest/ww.zip
+  bundle_type: zip
+  application: penrose
+  deployment_group: ww
+  on: *2
 cache:
   directories:
   - "$HOME/.ghc"
@@ -58,3 +66,6 @@ after_success:
 - |
   # Build and ship binary
   ./.travis/attach-binary.sh
+before_deploy:
+- mkdir -p dpl_cd_upload
+- mv ww.zip dpl_cd_upload/ww.zip
