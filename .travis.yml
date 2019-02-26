@@ -68,6 +68,8 @@ after_success:
 - execpath=$(stack exec which penrose)
 - mv $execpath ./src/penrose
 - zip -r ww.zip ./src
+
 before_deploy:
+- ls -alR
 - mkdir -p dpl_cd_upload
 - mv ww.zip dpl_cd_upload/ww.zip
