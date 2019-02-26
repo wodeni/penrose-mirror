@@ -63,9 +63,8 @@ script:
   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
   set +ex
 after_success:
-- |
-  # Build and ship binary
-  ./.travis/attach-binary.sh
+- output=$(stack exec which penrose)
+- echo "$output"
 before_deploy:
 - mkdir -p dpl_cd_upload
 - mv ww.zip dpl_cd_upload/ww.zip
