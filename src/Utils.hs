@@ -5,15 +5,10 @@
 {-# LANGUAGE ConstraintKinds #-}
 
 module Utils where
-import Control.Monad (void)
-import Data.Void
 import Debug.Trace
-import Text.Megaparsec
-import Text.Megaparsec.Char
-import Text.Megaparsec.Expr
-import qualified Text.Megaparsec.Char.Lexer as L
 import Data.Typeable
 import Control.Arrow
+
 
 -- | A more concise typeclass for polymorphism for autodiff
 -- | NiceFloating :: * -> Constraint
@@ -22,6 +17,7 @@ type Autofloat a = (RealFloat a, Floating a, Real a, Show a, Ord a)
 type Autofloat' a = (RealFloat a, Floating a, Real a, Show a, Ord a, Typeable a)
 
 type Pt2 a = (a, a)
+type Property = String
 
 --------------------------------------------------------------------------------
 -- Parameters of the system
@@ -40,10 +36,13 @@ defaultWeight :: Floating a => a
 defaultWeight = 1
 
 -- Debug flags
+-- debug = True
 debug = False
 debugStyle = False
+-- debugLineSearch = True
 debugLineSearch = False
-debugObj = False -- turn on/off output in obj fn or constraint
+-- turn on/off output in obj fn or constraint
+debugObj = True
 
 -- used when sampling the inital state, make sure sizes satisfy subset constraints
 subsetSizeDiff :: Floating a => a
@@ -54,6 +53,10 @@ epsd = 10 ** (-10)
 
 --------------------------------------------------------------------------------
 -- General helper functions
+
+fromRight :: (Show a, Show b) => Either a b -> b
+fromRight (Left x) = error ("Failed with error: " ++ show x)
+fromRight (Right y) = y
 
 divLine :: IO ()
 divLine = putStr "\n--------\n\n"
@@ -73,6 +76,14 @@ trd (_, _, x) = x
 -- | transform from a 2-element list to a 2-tuple
 tuplify2 :: [a] -> (a,a)
 tuplify2 [x,y] = (x,y)
+
+-- | apply a function to each element of a 2-tuple
+app2 :: (a -> b) -> (a, a) -> (b, b)
+app2 f (x, y) = (f x, f y)
+
+-- | apply a function to each element of a 3-tuple
+app3 :: (a -> b) -> (a, a, a) -> (b, b, b)
+app3 f (x, y, z) = (f x, f y, f z)
 
 -- | generic cartesian product of elements in a list
 cartesianProduct :: [[a]] -> [[a]]
@@ -121,107 +132,7 @@ uniqueShapeName subObjName styShapeName = subObjName ++ nameSep ++ styShapeName
  -- e.g. "B yaxis" (the concatenation should be unique), TODO add the two names as separate obj fields
 
 
---------------------------------------------------------------------------------
----- Lexer helper functions
--- TODO: separate reserved words and keywords for each of the DSLs
 
-type Parser = Parsec Void String
-
-rws, attribs, attribVs, shapes :: [String] -- list of reserved words
-rws =     ["avoid", "global", "as"] ++ shapes ++ dsll
--- ++ types ++ attribs ++ shapes ++ colors
-attribs = ["shape", "color", "label", "scale", "position"]
-attribVs = shapes
-shapes =  ["Auto", "None", "Circle", "Box", "SolidArrow", "SolidDot", "HollowDot", "Cross"]
-labelrws = ["Label", "AutoLabel", "NoLabel"]
-dsll = ["tconstructor","vconstructor","operator","forvars","fortypes","predicate", "Prop", "type", "<:", "->", "<->"]
--- colors =  ["Random", "Black", "Red", "Blue", "Yellow"]
-
-upperId, lowerId, identifier :: Parser String
-identifier = (lexeme . try) (p >>= checkId)
-  where p = (:) <$> letterChar <*> many validChar
-upperId = (lexeme . try) (p >>= checkId)
-  where p = (:) <$> upperChar <*> many validChar
-lowerId = (lexeme . try) (p >>= checkId)
-  where p = (:) <$> lowerChar <*> many validChar
-validChar = alphaNumChar <|> char '_'
-
-checkId :: String -> Parser String
-checkId x = if x `elem` rws
-          then fail $ "keyword " ++ show x ++ " cannot be an identifier"
-          else return x
-
-texExpr :: Parser String
-texExpr = dollar >> manyTill asciiChar dollar
-
--- | 'lineComment' and 'blockComment' are the two styles of commenting in Penrose. Line comments start with @--@. Block comments are wrapped by @/*@ and @*/@.
-lineComment, blockComment :: Parser ()
-lineComment  = L.skipLineComment "--"
-blockComment = L.skipBlockComment "/*" "*/"
-
--- | A strict space consumer. 'sc' only eats space and tab characters. It does __not__ eat newlines.
-sc :: Parser ()
-sc = L.space (void $ takeWhile1P Nothing f) lineComment empty
-  where
-    f x = x == ' ' || x == '\t'
-
--- | A normal space consumer. 'scn' consumes all whitespaces __including__ newlines.
-scn :: Parser ()
-scn = L.space space1 lineComment blockComment
-
-lexeme :: Parser a -> Parser a
-lexeme = L.lexeme sc
-
-symbol :: String -> Parser String
-symbol = L.symbol sc
-
-newline' :: Parser ()
-newline' = newline >> scn
-
-backticks :: Parser a -> Parser a
-backticks = between (symbol "`") (symbol "`")
-
-lparen, rparen, lbrac, rbrac, colon, arrow, comma :: Parser ()
-aps = void (symbol "'")
-lbrac = void (symbol "{")
-rbrac = void (symbol "}")
-lparen = void (symbol "(")
-rparen = void (symbol ")")
-slparen = void (symbol "[")
-srparen = void (symbol "]")
-colon = void (symbol ":")
-arrow = void (symbol "->")
-comma = void (symbol ",")
-dot = void (symbol ".")
-eq = void (symbol "=")
-dollar = void (symbol "$")
-
-
-dollars :: Parser a -> Parser a
-dollars = between (symbol "$") (symbol "$")
-
-braces :: Parser a -> Parser a
-braces = between (symbol "{") (symbol "}")
-
-parens :: Parser a -> Parser a
-parens = between (symbol "(") (symbol ")")
-
-brackets :: Parser a -> Parser a
-brackets = between (symbol "[") (symbol "]")
-
--- | 'integer' parses an integer.
-integer :: Parser Integer
-unsignedInteger       = lexeme L.decimal
-integer = L.signed sc unsignedInteger
-
--- | 'float' parses a floating point number.
-float :: Parser Float
-unsignedFloat = lexeme L.float
-float = L.signed sc unsignedFloat
-
--- Reserved words
-rword :: String -> Parser ()
-rword w = lexeme (string w *> notFollowedBy alphaNumChar)
 
 
 --------------------------------------------------------------------------------
@@ -244,7 +155,6 @@ trs s x = if debugStyle then trace "---" $ trace s $ traceShowId x else x -- pri
 
 trRaw :: Show a => String -> a -> a
 trRaw s x = trace "---" $ trace s $ trace (show x ++ "\n") x -- prints in left to right order
--- trRaw s x = if debug then  trace "---" $ trace s $ trace (show x ++ "\n") x else x-- prints in left to right order
 
 trStr :: String -> a -> a
 trStr s x = if debug then trace "---" $ trace s x else x -- prints in left to right order
@@ -252,15 +162,15 @@ trStr s x = if debug then trace "---" $ trace s x else x -- prints in left to ri
 tr' :: Show a => String -> a -> a
 tr' s x = if debugLineSearch then trace "---" $ trace s $ traceShowId x else x -- prints in left to right order
 
-tro :: Show a => String -> a -> a
-tro s x = if debugObj then trace "---" $ trace s $ traceShowId x else x -- prints in left to right order
+tro :: String -> a -> a
+tro s x = if debugObj then trace "---" $ trace s x else x -- prints in left to right order
 
 --------------------------------------------------------------------------------
 -- Lists-as-vectors utility functions
 
 -- define operator precedence: higher precedence = evaluated earlier
 infixl 6 +., -.
-infixl 7 *. -- .*, /.
+infixl 7 *., /.
 
 -- assumes lists are of the same length
 dotL :: (RealFloat a, Floating a) => [a] -> [a] -> a
@@ -284,6 +194,28 @@ negL = map negate
 (*.) :: Floating a => a -> [a] -> [a] -- multiply by a constant
 (*.) c v = map ((*) c) v
 
+(/.) :: Floating a => [a] -> a -> [a]
+(/.) v c = map ((/) c) v
+
+p2v (x, y) = [x, y]
+
+v2p [x, y] = (x, y)
+
+infixl 6 +:, -:
+infixl 7 *:, /:
+
+(+:) :: Floating a => (a, a) -> (a, a) -> (a, a)
+(+:) (x, y) (c, d) = (x + c, y + d)
+
+(-:) :: Floating a => (a, a) -> (a, a) -> (a, a)
+(-:) (x, y) (c, d) = (x - c, y - d)
+
+(*:) :: Floating a => a -> (a, a) -> (a, a)
+(*:) c (x, y) = (c * x, c * y)
+
+(/:) :: Floating a => (a, a) -> a -> (a, a)
+(/:) (x, y) c = (c / x, c / y)
+
 -- Again (see below), we add epsd to avoid NaNs. This is a general problem with using `sqrt`.
 norm :: Floating a => [a] -> a
 norm v = sqrt ((sum $ map (^ 2) v) + epsd)
@@ -300,6 +232,9 @@ findAngle (x1, y1) (x2, y2) = atan $ (y2 - y1) / (x2 - x1)
 
 midpoint :: Floating a => (a, a) -> (a, a) -> (a, a) -- mid point
 midpoint (x1, y1) (x2, y2) = ((x1 + x2) / 2, (y1 + y2) / 2)
+
+midpointV :: Floating a => [a] -> [a] -> [a]
+midpointV x y = (x +. y) /. 2.0
 
 -- We add epsd to avoid NaNs in the denominator of the gradient of dist.
 -- Now, grad dist (0, 0) (0, 0) is 0 instead of NaN.

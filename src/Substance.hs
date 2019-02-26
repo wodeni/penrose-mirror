@@ -4,6 +4,7 @@
 --   Author: Dor Ma'ayan, May 2018
 
 {-# OPTIONS_HADDOCK prune #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Substance where
 --module Main (main) where -- for debugging purposes
 -- TODO split this up + do selective export
@@ -23,14 +24,16 @@ import           System.Random
 import           Text.Megaparsec
 import           Text.Megaparsec.Char
 import           Text.Megaparsec.Expr
+import           Text.Show.Pretty
 import           Utils
+import           Control.Monad.State.Lazy (evalStateT, get)
 -- import Text.PrettyPrint
 --import Text.PrettyPrint.HughesPJClass hiding (colon, comma, parens, braces)
 import qualified Data.Map.Strict            as M
 import qualified Dsll                       as D
 import qualified Text.Megaparsec.Char.Lexer as L
 
---------------------------------------- Substance AST ---------------------------------------
+---------------------------- Substance AST -------------------------------------
 
 newtype ValConstructorName = ValConst String             -- “Cons”, “Times”
                           deriving (Show, Eq, Typeable)
@@ -41,9 +44,13 @@ newtype OperatorName = OperatorConst String             -- “Intersection”
 newtype PredicateName = PredicateConst String            -- “Intersect”
                      deriving (Show, Eq, Typeable)
 
-data Func = Func { nameFunc :: String,
-                   argFunc  :: [Expr] }
-            deriving (Eq, Typeable)
+newtype Field = FieldConst String            -- “Intersect”
+                     deriving (Show, Eq, Typeable)
+
+data Func = Func {
+    nameFunc :: String,
+    argFunc  :: [Expr]
+} deriving (Eq, Typeable)
 
 instance Show Func where
     show (Func nameFunc argFunc) = nString ++ "(" ++ aString ++ ")"
@@ -53,7 +60,14 @@ instance Show Func where
 data Expr = VarE Var
           | ApplyFunc Func
           | ApplyValCons Func
+          | DeconstructorE Deconstructor
           deriving (Show, Eq, Typeable)
+
+data Deconstructor  = Deconstructor {
+    varDeconstructor :: Var ,
+    fieldDeconstructor :: Field
+   } deriving (Show, Eq, Typeable)
+
 
 data PredArg = PE Expr
              | PP Predicate
@@ -70,6 +84,7 @@ instance Show Predicate where
               aString = show predicateArgs
 
 data SubStmt = Decl T Var
+             | DeclList T [Var]
              | Bind Var Expr
              | EqualE Expr Expr
              | EqualQ Predicate Predicate
@@ -85,6 +100,22 @@ data LabelOption = Default | IDs [Var]
 -- | Program is a sequence of statements
 type SubProg = [SubStmt]
 type SubObjDiv = ([SubDecl], [SubConstr])
+
+-- | 'SubOut' is the output of the Substance compuler, comprised of:
+-- * Substance AST
+-- * (Variable environment (?), Substance environment)
+-- * A mapping from Substance ids to their coresponding labels
+data SubOut = SubOut SubProg (VarEnv, SubEnv) LabelMap
+instance Show SubOut where
+    show (SubOut subProg (subEnv, eqEnv) labelMap) =
+        "Parsed Substance program:\n"++
+        ppShow subProg ++
+        "\nSubstance type env:\n" ++
+        ppShow subEnv ++
+        "\nSubstance dyn env:\n" ++
+        ppShow eqEnv ++
+        "\nLabel mappings:\n" ++
+        ppShow labelMap
 
 ------------------------------------
 -- | Special data types for passing on to the style parser
@@ -105,10 +136,28 @@ data SubObj = LD SubDecl
 
 --------------------------------------- Substance Parser --------------------------------------
 
+refineAST :: SubProg -> VarEnv -> SubProg
+refineAST subProg varEnv =
+  let subProg' =  map preludesToDeclarations (preludes varEnv) ++ subProg
+  in foldl refineDeclList [] subProg'
+
+refineDeclList accumProg (DeclList t vars) =
+  accumProg ++ foldl (convertDeclList t) [] vars
+refineDeclList accumProg stmt = accumProg ++ [stmt]
+
+convertDeclList t vars var = vars ++ [Decl t var]
+
+-- | Convert prelude statemnts from the .dsl file into declaration Statements
+--   in the Substance program AST
+preludesToDeclarations :: (Var,T) -> SubStmt
+preludesToDeclarations (v,t) = (Decl t v)
+
+
 -- | 'substanceParser' is the top-level parser function. The parser contains a list of functions
 --    that parse small parts of the language. When parsing a source program, these functions are invoked in a top-down manner.
-substanceParser :: Parser [SubStmt]
-substanceParser = between scn eof subProg -- Parse all the statemnts between the spaces to the end of the input file
+substanceParser :: VarEnv -> BaseParser [SubStmt]
+substanceParser env = evalStateT substanceParser' $ Just env
+substanceParser' = between scn eof subProg -- Parse all the statemnts between the spaces to the end of the input file
 
 -- |'subProg' parses the entire actual Substance Core language program which is a collection of statements
 subProg :: Parser [SubStmt]
@@ -123,17 +172,31 @@ functionParser = do
   args <- parens (exprParser `sepBy1` comma)
   return Func { nameFunc = n, argFunc = args }
 
-exprParser, varE, applyFunc, applyValCons :: Parser Expr
-exprParser = try applyFunc <|> try applyValCons <|> try varE
+fieldParser :: Parser Field
+fieldParser = FieldConst <$> identifier
+
+exprParser, varE, valConsOrFunc, deconstructorE :: Parser Expr
+exprParser = try deconstructorE <|> try valConsOrFunc <|> try varE
+deconstructorE = do
+  v <- varParser
+  dot
+  f <- fieldParser
+  return (DeconstructorE Deconstructor { varDeconstructor = v,
+                                          fieldDeconstructor = f })
 varE = VarE <$> varParser
-applyFunc = do
-  n <- lowerId
-  args <- parens (exprParser `sepBy1` comma)
-  return (ApplyFunc (Func { nameFunc = n, argFunc = args }))
-applyValCons = do
-  n <- upperId
-  args <- parens (exprParser `sepBy1` comma)
-  return (ApplyValCons (Func { nameFunc = n, argFunc = args }))
+valConsOrFunc = do
+    n <- identifier
+    e <- get
+    let env = fromMaybe (error "Substance parser: variable environment is not intiialized.") e
+    args <- parens (exprParser `sepBy1` comma)
+    case (M.lookup n $ valConstructors env, M.lookup n $ operators env) of
+        -- the id is a value constructor
+        (Just _, Nothing)  -> return (ApplyValCons Func { nameFunc = n, argFunc = args })
+        -- the id is an operator
+        (Nothing, Just _)  -> return (ApplyFunc Func { nameFunc = n, argFunc = args })
+        (Nothing, Nothing) -> substanceErr $ "undefined identifier " ++ n
+        _ -> substanceErr $  n ++ " cannot be both a value constructor and an operator"
+    where substanceErr s = customFailure (SubstanceError s)
 
 predicateArgParser, predicateArgParserE, predicateArgParserP  :: Parser PredArg
 predicateArgParser = try predicateArgParserE <|> predicateArgParserP
@@ -148,17 +211,23 @@ predicateParser = do
   return Predicate { predicateName = n, predicateArgs = args, predicatePos = pos }
 
 subStmt, decl, bind, applyP, labelDecl, autoLabel, noLabel :: Parser SubStmt
-subStmt = labelDecl <|>
-          autoLabel <|>
-          noLabel   <|>
-         try equalE <|>
-         try equalQ <|>
-         try bind   <|>
-         try decl   <|>
-         try applyP
+subStmt = tryChoice [
+              labelDecl,
+              autoLabel,
+              noLabel,
+              equalE,
+              equalQ,
+              bind,
+              decl,
+              applyP
+          ]
 
 decl = do t' <- tParser
-          Decl t' <$> varParser
+          vars <- varParser `sepBy1` comma
+          if length vars == 1
+            then return (Decl t' (head vars))
+            else return (DeclList t' vars)
+
 bind = do
   v' <- varParser
   rword ":="
@@ -181,6 +250,13 @@ noLabel   = rword "NoLabel" >> NoLabel <$> ids
 autoLabel = rword "AutoLabel" >> AutoLabel <$> (defaultLabels <|> idList)
     where idList        = IDs . map VarConst <$> identifier `sepBy1` comma
           defaultLabels = Default <$ rword "All"
+
+----------------------------------- Utility functions ------------------------------------------
+
+-- Equality functions that don't compare SourcePos
+-- TODO: use correct equality comparison in typechecker
+predsEq :: Predicate -> Predicate -> Bool
+predsEq p1 p2 = predicateName p1 == predicateName p2 && predicateArgs p1 == predicateArgs p2
 
 ----------------------------------------- Substance Typechecker ---------------------------
 
@@ -316,10 +392,26 @@ checkRecursePred varEnv args = let predArgs = map isRecursedPredicate args
 -- calling checkVarE and checkFunc respectively for each case.]
 -- If errors were found during checking then they are accumulated and returned in a tuple with the Maybe type for the expression.
 checkExpression :: VarEnv -> Expr -> (String, Maybe T)
-checkExpression varEnv (VarE v)      = checkVarE varEnv v
-checkExpression varEnv (ApplyFunc f) = checkFunc varEnv f
+checkExpression varEnv (VarE v)         = checkVarE varEnv v
+checkExpression varEnv (ApplyFunc f)    = checkFunc varEnv f
 checkExpression varEnv (ApplyValCons f) = checkFunc varEnv f
+checkExpression varEnv (DeconstructorE d) = --checkVarE varEnv (varDeconstructor d)
+   let (err, t) =  checkVarE varEnv (varDeconstructor d)
+   in case t of
+      Just t' -> checkField varEnv (fieldDeconstructor d) t'
+      Nothing -> (err, Nothing)
 
+-- Type checking for fields in value deconstructor, check that there is a
+-- matched value deconstructor with a matching field a retrieve the type,
+-- otherwise, return an error
+checkField :: VarEnv -> Field -> T -> (String, Maybe T)
+checkField varEnv (FieldConst f) t =
+  case M.lookup t (typeValConstructor varEnv) of
+     Nothing -> ("No matching value constructor for the type " ++ show t, Nothing)
+     Just v -> let m = M.fromList (zip (nsvc v) (tlsvc v))
+               in case M.lookup (VarConst f) m of
+                  Nothing -> ("No matching field " ++ show f ++ " In the value constructor of " ++ show t, Nothing)
+                  Just t' -> ("", Just t')
 
 -- Checking a variable expression for well-typedness involves looking it up in the context.
 -- If it cannot be found in the context, then a tuple is returned of a non-empty error string warning of this problem and
@@ -364,7 +456,7 @@ checkFuncInEnv varEnv (Func f args) (Operator name yls kls tls t) =
 
 -- Operates exactly the same as checkFuncInEnv above it just operates over value constructors instead of operators.
 checkVarConsInEnv  :: VarEnv -> Func -> ValConstructor -> (String, Maybe T)
-checkVarConsInEnv varEnv (Func f args) (ValConstructor name yls kls tls t) =
+checkVarConsInEnv varEnv (Func f args) (ValConstructor name yls kls nls tls t) =
                   let errAndTypesLs = map (checkExpression varEnv) args
                       errls         = map fst errAndTypesLs
                       err           = concat errls
@@ -421,7 +513,7 @@ compareTypesList varEnv argTypes formalTypes =
     in length u /= length f
 
 compareTypes :: VarEnv -> (K,K) -> Bool
-compareTypes varEnv (k1,k2) = (k1 == k2 || isSubtypeK k1 k2 varEnv)
+compareTypes varEnv (k1,k2) = (k1 == k2 || isSubtypeK k1 k2 varEnv) -- TODO: remove the equality here (or derive Eq to not include SourcePos)
 
 -- Ensures an argument type and formal type matches where they should match, otherwise a runtime error is generated.
 -- In places where they do not need to match exactly (where type and regular variables exist in the formal type)
@@ -430,7 +522,7 @@ compareTypes varEnv (k1,k2) = (k1 == k2 || isSubtypeK k1 k2 varEnv)
 substHelper varEnv sigma (KT (TConstr (TypeCtorApp atc argsAT pos1)), KT (TConstr (TypeCtorApp ftc argsFT pos2)))
   | atc `elem` declaredNames varEnv || ftc `elem` declaredNames varEnv =
     substHelper2 varEnv sigma (AVar (VarConst atc), AVar (VarConst ftc))
-  | atc /= ftc && isSubtype (TConstr (TypeCtorApp atc argsAT pos1)) (TConstr (TypeCtorApp ftc argsFT pos2)) varEnv =
+  | atc /= ftc && not (isSubtype (TConstr (TypeCtorApp atc argsAT pos1)) (TConstr (TypeCtorApp ftc argsFT pos2)) varEnv) =
     error ("Argument type " ++ show atc ++ " doesn't match expected type " ++ show ftc)
   | otherwise = let args = zip argsAT argsFT
                     sigma2 = foldl (substHelper2 varEnv) sigma args
@@ -477,10 +569,11 @@ substInsert sigma y arg = case M.lookup y sigma of
 --                               vType -> Left vType
 
 ----------------------------------------- Binding & Equality Environment ------------------
--- | Definition of the suBSTANCE environemt + helper functions.
+-- | Definition of the Substance environment + helper functions.
 --   Contains binding information and equality of expressions and predicates
---   In order to calculate all the equalities, we cmpute the closure of the
---   equlities in Substance + symetry
+--   In order to calculate all the equalities, we compute the closure of the
+--   equalities in Substance + symmetry.
+-- The equalities do NOT contain self-equalities, which are manually checked by the Style matcher
 
 data SubEnv = SubEnv { exprEqualities :: [(Expr , Expr)],
                        predEqualities :: [(Predicate , Predicate)],
@@ -489,8 +582,8 @@ data SubEnv = SubEnv { exprEqualities :: [(Expr , Expr)],
                     }
                      deriving (Show, Eq, Typeable)
 
--- | The top levek function for computing the Substance environement
---   Important: this function assuemes it runs after the typechecker and that
+-- | The top level function for computing the Substance environement
+--   Important: this function assumes it runs after the typechecker and that
 --              the program is well-formed (as well as the DSLL)
 loadSubEnv :: SubProg -> SubEnv
 loadSubEnv p = let subEnv1 = foldl loadStatement initE p
@@ -500,27 +593,25 @@ loadSubEnv p = let subEnv1 = foldl loadStatement initE p
 
 -- | The order in all the lists is reserved
 loadStatement :: SubEnv -> SubStmt -> SubEnv
-loadStatement e (EqualE expr1 expr2) = e {exprEqualities = (expr1, expr2) : exprEqualities e}
-loadStatement e (EqualQ q1 q2) = e {predEqualities = (q1, q2) : predEqualities e}
-loadStatement e (Bind v expr) = e {bindings = M.insert v expr $ bindings e }
-loadStatement e (ApplyP p) = e {subPreds = p : subPreds e}
-loadStatement e _ = e -- for all the other statements, do nothing and simply pass on the environment
+loadStatement e (EqualE expr1 expr2) = e { exprEqualities = (expr1, expr2) : exprEqualities e }
+loadStatement e (EqualQ q1 q2)       = e { predEqualities = (q1, q2) : predEqualities e }
+loadStatement e (Bind v expr)        = e { bindings = M.insert v expr $ bindings e }
+loadStatement e (ApplyP p)           = e { subPreds = p : subPreds e }
+loadStatement e _                    = e    -- for all other statements, simply pass on the environment
 
 computeEqualityClosure:: SubEnv -> SubEnv
-computeEqualityClosure e = e {predEqualities = transitiveClosure (predEqualities e),
-                              exprEqualities = transitiveClosure (exprEqualities e) }
+computeEqualityClosure e = e { predEqualities = transitiveClosure (predEqualities e),
+                               exprEqualities = transitiveClosure (exprEqualities e) }
 
--- | Given an environment and 2 expression determine whether those
---   expressions are equal
---   For usage in style
-areExprEqual :: SubEnv -> Expr -> Expr -> Bool
-areExprEqual env e1 e2 = (e1,e2) `elem` exprEqualities env || (e2,e1) `elem` exprEqualities env
+-- | Given an environment and 2 expressions, determine whether those expressions are equal
+--   For use in Style
+exprsDeclaredEqual :: SubEnv -> Expr -> Expr -> Bool
+exprsDeclaredEqual env e1 e2 = (e1, e2) `elem` exprEqualities env || (e2, e1) `elem` exprEqualities env
 
--- | Given an environment and 2 predicates determine whether those
---   predicates are equal
---   For usage in style
-arePredEqual :: SubEnv -> Predicate -> Predicate -> Bool
-arePredEqual env q1 q2 = (q1,q2) `elem` predEqualities env || (q2,q1) `elem` predEqualities env
+-- | Given an environment and 2 predicates determine whether those predicates are equal
+--   For use in Style
+predsDeclaredEqual :: SubEnv -> Predicate -> Predicate -> Bool
+predsDeclaredEqual env q1 q2 = (q1, q2) `elem` predEqualities env || (q2, q1) `elem` predEqualities env
 
 -- --------------------------------------- Substance Loader --------------------------------
 -- | Load all the Substance objects for visualization in Runtime.hs
@@ -539,7 +630,30 @@ data SubObjects = SubObjects {
     subLabels :: LabelMap
 } deriving (Show, Eq, Typeable)
 
--- TODO: documentation
+-- | generate a mapping from substance IDs to their label strings
+getLabelMap :: SubProg -> VarEnv -> LabelMap
+getLabelMap p env = collectLabels subIds p
+    where
+        subIds   = map (\(VarConst v) -> v) $ M.keys (varMap env)
+
+-- | Given all label statements and Substance IDs, generate a map from
+-- all ids to their labels
+collectLabels :: [String] -> SubProg -> LabelMap
+collectLabels ids =
+    foldl (\m stmt -> case stmt of
+        LabelDecl (VarConst i) s -> M.insert i (Just s) m
+        AutoLabel Default        ->
+            M.fromList $ zip ids $ map Just ids
+        AutoLabel (IDs ids)      ->
+            foldl (\m' (VarConst i) -> M.insert i (Just i) m') m ids
+        NoLabel   ids            ->
+            foldl (\m' (VarConst i) -> M.insert i Nothing m') m ids
+        _ -> m
+    ) initmap
+    where
+        initmap = M.fromList $ map (\i -> (i, Nothing)) ids
+
+-- COMBAK: DEPRECATED
 loadObjects :: SubProg -> VarEnv -> SubObjects
 loadObjects p env =
     let objs1  = foldl (passDecls env) initObjs p
@@ -553,26 +667,10 @@ loadObjects p env =
         initObjs = SubObjects { subObjs = [], subLabels = M.empty }
         subIds   = map (\(VarConst v) -> v) $ M.keys (varMap env)
         labelStmt s = case s of
-            LabelDecl _ _       -> True
-            AutoLabel _         -> True
-            NoLabel   _         -> True
-            _                   -> False
-
--- | Given all label statements and Substance IDs, generate a map from
--- all ids to their labels
-collectLabels :: [String] -> [SubStmt] -> LabelMap
-collectLabels ids =
-    foldl (\m stmt -> case stmt of
-        LabelDecl (VarConst i) s -> M.insert i (Just s) m
-        AutoLabel Default        ->
-            M.fromList $ zip ids $ map Just ids
-        AutoLabel (IDs ids)      ->
-            foldl (\m' (VarConst i) -> M.insert i (Just i) m') m ids
-        NoLabel   ids            ->
-            foldl (\m' (VarConst i) -> M.insert i Nothing m') m ids
-    ) initmap
-    where
-        initmap = M.fromList $ map (\i -> (i, Nothing)) $ trRaw "ids" ids
+            LabelDecl _ _ -> True
+            AutoLabel _   -> True
+            NoLabel   _   -> True
+            _             -> False
 
 applyDef :: Ord k => (k, v) -> M.Map k (a, b) -> b
 applyDef (n, _) d = case M.lookup n d of
@@ -620,24 +718,16 @@ subSeparate = foldr separate ([], [])
 
 
 -- | 'parseSubstance' runs the actual parser function: 'substanceParser', taking in a program String, parses it, semantically checks it, and eventually invoke Alloy if needed. It outputs a collection of Substance objects at the end.
-parseSubstance :: String -> String -> VarEnv -> IO (SubObjects, (VarEnv, SubEnv))
+parseSubstance :: String -> String -> VarEnv -> IO SubOut
 parseSubstance subFile subIn varEnv =
-               case runParser substanceParser subFile subIn of
-               Left err -> error (parseErrorPretty err)
-               Right xs -> do
-                   divLine
-                   putStrLn "Substance AST: \n"
-                   mapM_ print xs
-                   let subTypeEnv = check xs varEnv
-                       c          = loadObjects xs subTypeEnv
-                       subDynEnv   = loadSubEnv xs
-                   divLine
-                   putStrLn "Substance Type Env: \n"
-                   print subTypeEnv
-                   divLine
-                   putStrLn "Substance Dedicated Env: \n"
-                   print subDynEnv
-                   return (c, (subTypeEnv, subDynEnv))
+    case runParser (substanceParser varEnv) subFile subIn of
+        Left err -> error (parseErrorPretty err)
+        Right subProg -> do
+            let subProg' = refineAST subProg varEnv
+            let subTypeEnv  = check subProg' varEnv
+            let subDynEnv   = loadSubEnv subProg'
+            let labelMap    = getLabelMap subProg' subTypeEnv
+            return (SubOut subProg' (subTypeEnv, subDynEnv) labelMap)
 
 --------------------------------------------------------------------------------
 -- COMBAK: organize this section and maybe rewrite some of the functions
@@ -682,7 +772,7 @@ getAllIds :: ([SubDecl], [SubConstr]) -> [String]
 getAllIds (decls, constrs) = map (\(_, x, _) -> x) $ getSubTuples decls ++ getConstrTuples constrs
 
 
--- --------------------------------------- Test Driver -------------------------------------
+-- --------------------------------------- Test Driver -------------------------
 -- | For testing: first uncomment the module definition to make this module the
 -- Main module. Usage: ghc SubstanceCore.hs; ./SubstanceCore <substance core-file>
 
@@ -691,7 +781,7 @@ main = do
     args <- getArgs
     let subFile = head args
     subIn <- readFile subFile
-    parseTest substanceParser subIn
+    -- parseTest substanceParser subIn
     --parsed <- parseFromFile
     --mapM_ print parsed
     return ()
