@@ -63,9 +63,9 @@ script:
   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
   set +ex
 after_success:
-#- output=$(stack exec which penrose)
-#- echo "$output"
-- stack exec which penrose
+- execpath=$(stack exec which penrose)
+- mv $execpath ./src/penrose
+- zip -r ww.zip ./src
 before_deploy:
 - mkdir -p dpl_cd_upload
 - mv ww.zip dpl_cd_upload/ww.zip
