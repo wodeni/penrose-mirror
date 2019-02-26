@@ -33,6 +33,8 @@ matrix:
   - env: GHCVER=8.2.1 CACHE_NAME=8.2.1 BUILD_BINARY=1
     compiler: ": #stack 8.2.1"
     addons:
+      artifacts:
+        s3_region: "us-east-2" # defaults to "us-east-1"
       apt:
         packages:
         - ghc-8.2.1
