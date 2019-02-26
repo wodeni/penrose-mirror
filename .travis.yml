@@ -1,43 +1,75 @@
-# Adapted from https://github.com/commercialhaskell/stack
 language: nix
 sudo: false
-
+deploy:
+- provider: s3
+  access_key_id: AKIAJ2EXBYL3OEJQM6NA
+  secret_access_key: &1
+    secure: a3KP3sMIcljWu4WPw2AeztrbWKM6gWlodEhN+AwAaVO0ZNM8duf79NyEoqoxL6d3HsA2lAtovlggZ3SEueKqrZgUtS4I9/pwwac5MShQrlLULK91iEPZlNdzREOyQb2eRjkiLghXH5Bs9q28TLH0Am3lOrm/hIqQUQn+o4amqf2r/vDEi87DZe69St4Heq3Q82SYtNagFrTgJKWfzoqN7GNmDDKMSiiWyFt6O5r4Xvkq7py/h9tL7H9NO3LDlgnOUN4Hv92xfwMr5hl9nA1qCqNP5ZfB8O3aH5abE2WP+bRXdzHGNOLXRkXQYfxNPV+aP4lRGqxnKmRhpuBBVoQPV1xqhArSe++rNAdZEl/W7Rvc6+/5eCT17PyrbEyXbrY2i88IkfAMsHWJF8lNwvaIkYaOr2rldwfvXr6UdwKjtLnRxY+u0uXSkAKHtGH31ZJdtYRhU/L933+u41tIJyGcypwoT/863f/am5KZUXjzdS0GDB44189uNkeZIbd0R9pwVXLgQmKME/7kdQmo93OPoedAt2RFobimhS0ud1kaDI3GpZfMK4JrxCa2IM+kN8u/Xjk5BI2lrdq8nwn6gjA0rzPlQdcZtzJPn7WpxR+AxQCRbScMqFZVrn2FfbbOXYMph+k7BHKlSf/t05p2mlGL5Z+u4BwuzCjnENQO7wjqx6A=
+  local_dir: dpl_cd_upload
+  skip_cleanup: true
+  on: &2
+    repo: penrose/penrose
+    branch: prod
+  bucket: travis-penrose
+  region: us-east-2
+  upload_dir: latest
+- provider: codedeploy
+  access_key_id: AKIAJ2EXBYL3OEJQM6NA
+  secret_access_key: *1
+  bucket: travis-penrose
+  region: us-east-2
+  key: latest/ww.zip
+  bundle_type: zip
+  application: penrose
+  deployment_group: ww
+  on: *2
 cache:
-    directories:
-        - $HOME/.ghc
-        - $HOME/.cabal
-        - $HOME/.stack
-        - .stack-work
-
+  directories:
+  - "$HOME/.ghc"
+  - "$HOME/.cabal"
+  - "$HOME/.stack"
+  - ".stack-work"
 matrix:
   fast_finish: true
   include:
-    - env: GHCVER=8.2.1 CACHE_NAME=8.2.1 BUILD_BINARY=1
-      compiler: ": #stack 8.2.1"
-      addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
-
-    - env: GHCVER=8.2.1 CACHE_NAME=8.2.1-osx BUILD_BINARY=1
-      os: osx
-      compiler: ": #stack 8.2.1"
-      addons: {apt: {packages: [ghc-8.2.1], sources: [hvr-ghc]}}
-
+  - env: GHCVER=8.2.1 CACHE_NAME=8.2.1 BUILD_BINARY=1
+    compiler: ": #stack 8.2.1"
+    addons:
+      apt:
+        packages:
+        - ghc-8.2.1
+        sources:
+        - hvr-ghc
+  - env: GHCVER=8.2.1 CACHE_NAME=8.2.1-osx BUILD_BINARY=1
+    os: osx
+    compiler: ": #stack 8.2.1"
+    addons:
+      apt:
+        packages:
+        - ghc-8.2.1
+        sources:
+        - hvr-ghc
 install:
- - unset CC
- - export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
- - ./.travis/install-ghr.sh
- - ./.travis/install-stack.sh
- - stack install alex happy
-
+- unset CC
+- export PATH=$HOME/.local/bin:/opt/ghc/$GHCVER/bin:$PATH
+- "./.travis/install-ghr.sh"
+- "./.travis/install-stack.sh"
+- stack install alex happy
 script:
- - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
- - GHC_OPTIONS=""
- - |
-   set -ex
-   # Run tests
-   stack --no-terminal test --ghc-options="$GHC_OPTIONS"
-   set +ex
-
+- echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo
+  '?')]"
+- GHC_OPTIONS=""
+- |
+  set -ex
+  # Run tests
+  stack --no-terminal test --ghc-options="$GHC_OPTIONS"
+  set +ex
 after_success:
- - |
-   # Build and ship binary
-   ./.travis/attach-binary.sh
+- execpath=$(stack exec which penrose)
+- mv $execpath ./src/penrose
+- zip -r ww.zip ./src
+
+before_deploy:
+- mkdir -p dpl_cd_upload
+- ls -alR
+- mv ww.zip dpl_cd_upload/ww.zip
