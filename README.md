@@ -1,9 +1,8 @@
-# Penrose [![Build Status](https://travis-ci.org/penrose/penrose.svg?branch=master)](https://travis-ci.org/penrose/penrose)
-
+# Penrose [![Build Status](https://travis-ci.org/penrose/penrose.svg?branch=master)](https://travis-ci.org/penrose/penrose) [![CircleCI](https://circleci.com/gh/wodeni/penrose-mirror.svg?style=svg&circle-token=e0f351036f28428fe174f3b9e3a68ae41643fbcf)](https://circleci.com/gh/wodeni/penrose-mirror)
 **Penrose is an early-stage system that is still in development.** Our system is not ready for contributions or public use yet, but hopefully will be soon. Send us an email if you're interested in collaborating.
 
-* See [the site](http://www.penrose.ink/) for more information and examples. 
-* See the [wiki](https://github.com/penrose/penrose/wiki) for more system-specific information on building, running, testing, and debugging the system. 
+* See [the site](http://www.penrose.ink/) for more information and examples.
+* See the [wiki](https://github.com/penrose/penrose/wiki) for more system-specific information on building, running, testing, and debugging the system.
 * For even more documentation, see Nimo Ni's [README](https://github.com/wodeni/notes-public/blob/master/penrose/archive/ramp-down.md).
 
 ### Example
@@ -24,7 +23,7 @@ It's specified by the following Substance and Style programs.
     Set F
     Set G
     Subset B A
-    Subset C A 
+    Subset C A
     Subset D B
     Subset E B
     Subset F C
@@ -65,6 +64,6 @@ It's specified by the following Substance and Style programs.
     }
     ```
 
-Here's how the optimization looks live in the UI. 
+Here's how the optimization looks live in the UI.
 
 <img src="https://github.com/penrose/penrose/blob/master/assets/penrose_readme.gif?raw=true" width=500>

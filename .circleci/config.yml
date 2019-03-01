@@ -9,7 +9,7 @@ jobs:
           # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
           name: Restore Cached Dependencies
           keys:
-            - penrose-cache-{{ checksum "package.yaml" }}-{{ checksum "stack.yaml" }}
+            - penrose-cache-{{ checksum "penrose.cabal" }}
       - run:
           name: Manually install Alex and Happy
           command: stack install alex happy
@@ -24,7 +24,7 @@ jobs:
           command: stack install
       - save_cache:
           name: Cache Dependencies
-          key: penrose-cache-{{ checksum "package.yaml" }}-{{ checksum "stack.yaml" }}
+          key: penrose-cache-{{ checksum "penrose.cabal" }}
           paths:
             - ".stack"
             - ".stack-work"
