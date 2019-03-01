@@ -11,6 +11,9 @@ jobs:
           keys:
             - penrose-cache-{{ checksum "package.yaml" }}-{{ checksum "stack.yaml" }}
       - run:
+          name: Manually install Alex
+          command: stack install alex
+      - run:
           name: Resolve/Update Dependencies
           command: stack build
       - run:
