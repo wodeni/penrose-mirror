@@ -28,6 +28,10 @@ jobs:
           paths:
             - ".stack"
             - ".stack-work"
+            - "$HOME/.ghc"
+            - "$HOME/.cabal"
+            - "$HOME/.stack"
+
       - store_artifacts:
           # Upload test summary for display in Artifacts: https://circleci.com/docs/2.0/artifacts/
           path: ~/.local/bin/penrose
