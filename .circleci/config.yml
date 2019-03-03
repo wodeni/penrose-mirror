@@ -64,7 +64,7 @@ workflows:
           requires:
             - aws-ecr/build_and_push_image
           family: penrose-service
-          cluster-name: arn:aws:eks:us-east-1:114475215481:cluster/penrose-cluster
+          cluster-name: penrose-cluster
           aws-access-key-id: AWS_ACCESS_KEY
           aws-secret-access-key: AWS_SECRET_ACCESS_KEY
           aws-region: AWS_REGION
