@@ -50,7 +50,8 @@ workflows:
     jobs:
       - build
       - aws-ecr/build_and_push_image:
-          requires: build
+          requires:
+            - build
           account-url: AWS_ECR_ACCOUNT_URL
           aws-access-key-id: AWS_ACCESS_KEY
           aws-secret-access-key: AWS_SECRET_ACCESS_KEY
@@ -60,7 +61,8 @@ workflows:
           attach-workspace: true
           workspace-root: ~/.local/bin
       - aws-ecs/deploy-service-update:
-          requires: aws-ecr/build_and_push_image
+          requires:
+            - aws-ecr/build_and_push_image
           family: penrose-service
           cluster-name: arn:aws:eks:us-east-1:114475215481:cluster/penrose-cluster
           aws-access-key-id: AWS_ACCESS_KEY
