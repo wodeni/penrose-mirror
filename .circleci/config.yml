@@ -5,44 +5,44 @@ orbs:
 jobs:
   build:
     docker:
-    - image: fpco/stack-build:lts
+      - image: fpco/stack-build:lts
     steps:
-    - checkout
-    - restore_cache:
-        # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
-        name: Restore Cached Dependencies
-        keys:
-        - penrose-cache-{{ checksum "penrose.cabal" }}
-    - run:
-        name: Manually install Alex and Happy
-        command: stack install alex happy
-    - run:
-        name: Resolve/Update Dependencies
-        command: stack build
-    - run:
-        name: Run tests
-        command: stack test
-    - run:
-        name: Install executable
-        command: stack install
-    - save_cache:
-        name: Cache Dependencies
-        key: penrose-cache-{{ checksum "penrose.cabal" }}
-        paths:
-        - ".stack"
-        - ".stack-work"
-        - "$HOME/.ghc"
-        - "$HOME/.cabal"
-        - "$HOME/.stack"
+      - checkout
+      - restore_cache:
+          # Read about caching dependencies: https://circleci.com/docs/2.0/caching/
+          name: Restore Cached Dependencies
+          keys:
+          - penrose-cache-{{ checksum "penrose.cabal" }}
+      - run:
+          name: Manually install Alex and Happy
+          command: stack install alex happy
+      - run:
+          name: Resolve/Update Dependencies
+          command: stack build
+      - run:
+          name: Run tests
+          command: stack test
+      - run:
+          name: Install executable
+          command: stack install
+      - save_cache:
+          name: Cache Dependencies
+          key: penrose-cache-{{ checksum "penrose.cabal" }}
+          paths:
+          - ".stack"
+          - ".stack-work"
+          - "$HOME/.ghc"
+          - "$HOME/.cabal"
+          - "$HOME/.stack"
 
-    - store_artifacts:
-        # Upload test summary for display in Artifacts: https://circleci.com/docs/2.0/artifacts/
-        path: ~/.local/bin/penrose
-        destination: penrose-bin
-    - persist_to_workspace:
-        root: ~/.local/bin
-        paths:
-          - penrose
+      - store_artifacts:
+          # Upload test summary for display in Artifacts: https://circleci.com/docs/2.0/artifacts/
+          path: ~/.local/bin/penrose
+          destination: penrose-bin
+      - persist_to_workspace:
+          root: ~/.local/bin
+          paths:
+            - penrose
 
 workflows:
   version: 2.1
