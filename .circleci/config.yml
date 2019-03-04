@@ -48,10 +48,10 @@ jobs:
           root: .
           paths:
             - src/
-executors:
-  ex:
-    machine: true
-    working_directory: ~/project
+#executors:
+#  ex:
+#    machine: true
+#    working_directory: ~/project
 
 workflows:
   version: 2.1
@@ -68,7 +68,7 @@ workflows:
           repo: penrose
           dockerfile: Dockerfile
           attach-workspace: true
-          executor: ex
+#          executor: ex
 #          workspace-root: ~/.local/bin
       - aws-ecs/deploy-service-update:
           requires:
