@@ -60,7 +60,7 @@ workflows:
           repo: penrose
           dockerfile: Dockerfile
           attach-workspace: true
-          workspace-root: ~/.local/bin
+#          workspace-root: ~/.local/bin
       - aws-ecs/deploy-service-update:
           requires:
             - aws-ecr/build_and_push_image
