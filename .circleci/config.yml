@@ -51,7 +51,7 @@ jobs:
 executors:
   ex:
     machine: true
-    working_directory: .
+    working_directory: ~/project
 
 workflows:
   version: 2.1
