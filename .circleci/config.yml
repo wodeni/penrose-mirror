@@ -44,6 +44,10 @@ jobs:
           root: ~/.local/bin
           paths:
             - penrose
+      - persist_to_workspace:
+          root: .
+          paths:
+            - src/
 
 workflows:
   version: 2.1

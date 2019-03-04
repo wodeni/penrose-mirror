@@ -1,9 +1,9 @@
 FROM ubuntu
 
-RUN mkdir -p /opt/penrose
-COPY .local/bin/penrose /opt/penrose/
-COPY src/ /opt/penrose/
-WORKDIR /opt/penrose
+#RUN mkdir -p /opt/penrose
+#COPY .local/bin/penrose /opt/penrose/
+#COPY src/ /opt/penrose/
+#WORKDIR /opt/penrose
 RUN apt-get update && apt-get install -y \
   ca-certificates \
   libgmp-dev
