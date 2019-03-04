@@ -6,6 +6,7 @@ jobs:
   build:
     docker:
       - image: fpco/stack-build:lts
+#    parallelism: 4
     steps:
       - checkout
       - restore_cache:
@@ -56,7 +57,7 @@ workflows:
           aws-access-key-id: AWS_ACCESS_KEY
           aws-secret-access-key: AWS_SECRET_ACCESS_KEY
           region: AWS_REGION
-          repo: 114475215481.dkr.ecr.us-east-1.amazonaws.com/penrose
+          repo: penrose
           dockerfile: Dockerfile
           attach-workspace: true
           workspace-root: ~/.local/bin
