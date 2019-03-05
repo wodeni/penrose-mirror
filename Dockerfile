@@ -9,4 +9,4 @@ RUN apt-get update && apt-get install -y \
 
 ENTRYPOINT ["./penrose"]
 EXPOSE 3939
-CMD ["src/sty/venn.sty","src/set-theory-domain/setTheory.dsl"]
+CMD ["--domain=0.0.0.0","src/sty/venn.sty","src/set-theory-domain/setTheory.dsl"]
